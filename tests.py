@@ -74,6 +74,14 @@ TESTS = {
         },
     },
 
+    'ndi_vs_ndi_cop': {
+        'title': 'NDI vs NDI-CoP (Center of Percussion)',
+        'variants': {
+            'NDI':     {'maut': 5, 'mseek': 0, 'mins': 0},
+            'NDI-CoP': {'maut': 7, 'mseek': 0, 'mins': 0},
+        },
+    },
+
     'accel_vs_indi': {
         'title': 'Accel Controller vs INDI',
         'variants': {

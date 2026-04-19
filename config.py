@@ -83,6 +83,7 @@ ZETACT  = 0.7      # actuator damping - ND
 #   3: accel controller (pole-placement)  ← classical CADAC
 #   5: NDI  (Nonlinear Dynamic Inversion)
 #   6: INDI (Incremental NDI)
+#   7: NDI-CoP (NDI reformulated about Center of Percussion — MP output)
 MAUT      = 6
 
 # Common autopilot limits
@@ -130,9 +131,10 @@ MC_INS_NOISE  = True     # inject INS sensor errors each run
 MC_BASE_SEED  = 0        # RNG seed for reproducibility (None → random each run)
 MC_SAVE_CSV   = True     # save per-run CSV + stats summary CSV
 MC_VARIANTS   = {        # autopilot variants compared in each MC sweep
-    'Accel': {'maut': 3},
-    'NDI':   {'maut': 5},
-    'INDI':  {'maut': 6},
+    'Accel':    {'maut': 3},
+    'NDI':      {'maut': 5},
+    'INDI':     {'maut': 6},
+    'NDI-CoP':  {'maut': 7},
 }
 
 

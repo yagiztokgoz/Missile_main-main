@@ -13,16 +13,16 @@ G = 9.80665
 
 class Target:
     NAMES = {
-        1: "Sabit hiz           |  duz ucus, yan offset",
-        2: "Ivmelenen kacis     |  t>1.5s 5-g lateral sprint",
-        3: "Sinusoidal jink     |  3-g lateral + 2-g dikey weave",
-        4: "Sert L-manevrasi    |  t>2s 8-g sag fren + 6-g yukari",
-        5: "Beaming / notch     |  90° crossing, yuksek LOS rate",
-        6: "Head-on + break     |  karsi karsiya, t=3s 7g sag break",
-        7: "Look-down engage    |  hedef 7500m alt, dive intercept",
+        1: "Constant speed      |  straight flight, lateral offset",
+        2: "Accelerating escape |  t>1.5s 5-g lateral sprint",
+        3: "Sinusoidal jink     |  3-g lateral + 2-g vertical weave",
+        4: "Sharp L-maneuver    |  t>2s 8-g right brake + 6-g up",
+        5: "Beaming / notch     |  90° crossing, high LOS rate",
+        6: "Head-on + break     |  head-on, t=3s 7g right break",
+        7: "Look-down engage    |  target at 7500m alt, dive intercept",
         8: "Last-ditch break    |  t=4s ~9g combined break (endgame)",
-        9: "Energy-bleed climb  |  hedef afterburner ile tirmanis",
-       10: "Coordinated turn    |  sustained 4g hedef donusu",
+        9: "Energy-bleed climb  |  target climbs with afterburner",
+       10: "Coordinated turn    |  sustained 4g target turn",
     }
 
     # S1-S4: ayni engagement geometrisinden (~6200m, 72° aspect).

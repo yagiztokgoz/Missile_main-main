@@ -52,6 +52,12 @@ class Control(object):
         self.k_alpha  = 0.0    # middle alpha-loop gain       - 1/s
         self.k_beta   = 0.0    # middle beta-loop gain        - 1/s
 
+        # ── NDI-CoP diagnostics ───────────────────────────────────────────────
+        self.x_cop_q  = 0.0    # pitch CoP position from CG (+ = nose) - m
+        self.x_cop_r  = 0.0    # yaw   CoP position from CG (+ = nose) - m
+        self.dna_cop  = 0.0    # effective normal force deriv at CoP    - m/s²/rad
+        self.dyb_cop  = 0.0    # effective lateral force deriv at CoP   - m/s²/rad
+
         # ── INDI filter states (used by control_indi, maut==6) ────────────────
         # Matched first-order LPFs on measured q, r, q̇, ṙ and on measured fin
         # deflections so control input and angular-accel feedback stay phase-
@@ -94,6 +100,9 @@ class Control(object):
 
         elif maut == 6:
             self.control_indi(int_step)
+
+        elif maut == 7:
+            self.control_ndi_cop(int_step)
 
 
     # ── roll position controller ───────────────────────────────────────────────
@@ -561,3 +570,142 @@ class Control(object):
         self.wn_ndi_r = wn_ndi_r
         self.k_alpha  = k_alpha
         self.k_beta   = k_beta
+
+
+    # ── NDI-CoP: NDI reformulated about the Center of Percussion ──────────────
+
+    def control_ndi_cop(self, int_step):
+        """
+        NDI autopilot reformulated about the Center of Percussion (CoP).
+
+        The CoP is the point on the body-axis where a fin deflection produces
+        zero instantaneous linear acceleration, thereby removing the RHP zero
+        (non-minimum-phase behaviour) that exists in the CG-referenced
+        transfer function δ → aₙ_CG for a tail-controlled missile.
+
+        CoP position forward of CG (metres):
+            x_cop = −dnd_rad / dmd        dnd_rad = dnd·DEG  [m/s²/rad]
+
+        Effective normal-force derivative at CoP:
+            dna_cop = dna + x_cop·dma
+
+        Outer loop  : CoP accel command → α/β command  (uses dna_cop, dyb_cop)
+        Middle loop : α/β command → q/r command  (CG kinematic feedforward — an_meas,
+                      not an_cop: α̇ = q − g·aₙ_CG/V is a CG-referenced identity)
+        Inner loop  : q/r command → fin command        (identical to NDI — MP)
+        """
+        m    = self.missile
+        aero = m.aerodynamics
+
+        # ── inputs ─────────────────────────────────────────────────────────────
+        alimit = m.alimit
+        ancomx = m.ancomx
+        alcomx = m.alcomx
+
+        q = m.WBECB[1]
+        r = m.WBECB[2]
+
+        fspb2 = m.FSPCB[1]
+        fspb3 = m.FSPCB[2]
+
+        an_meas = -fspb3 / AGRAV
+        al_meas =  fspb2 / AGRAV
+
+        alpha = m.alphaxc * RAD
+        beta  = m.betaxc  * RAD
+
+        dma  = aero.dma
+        dmq  = aero.dmq
+        dmd  = aero.dmd
+        dnd  = aero.dnd
+        dna  = aero.dna
+
+        dlnb = aero.dlnb
+        dlnr = aero.dlnr
+        dlnd = aero.dlnd
+        dyb  = aero.dyb
+
+        # ── structural limit ───────────────────────────────────────────────────
+        aa = math.sqrt(ancomx * ancomx + alcomx * alcomx)
+        if aa > alimit:
+            aa = alimit
+        if abs(ancomx) < SMALL and abs(alcomx) < SMALL:
+            phi = 0.0
+        else:
+            phi = math.atan2(ancomx, alcomx)
+        alcomx = aa * math.cos(phi)
+        ancomx = aa * math.sin(phi)
+
+        # ── tuning ─────────────────────────────────────────────────────────────
+        wn_ndi_q = config.WN_NDI_Q
+        wn_ndi_r = config.WN_NDI_R
+        k_alpha  = config.K_ALPHA
+        k_beta   = config.K_BETA
+
+        # ── Center of Percussion ───────────────────────────────────────────────
+        # dnd [m/s²/deg] → convert to [m/s²/rad] for dimensional consistency
+        dnd_rad = dnd * DEG
+
+        dmd_safe  = dmd  if abs(dmd)  > SMALL else SMALL * _sign(dmd  if dmd  != 0 else -1.0)
+        dlnd_safe = dlnd if abs(dlnd) > SMALL else SMALL * _sign(dlnd if dlnd != 0 else -1.0)
+
+        # CoP position from CG (positive = forward/nose direction), clamped to
+        # physical missile length for robustness near zero dynamic pressure.
+        x_cop_q = max(min(-dnd_rad / dmd_safe,  3.0), -3.0)
+        # yaw plane: cruciform symmetry → same fin normal force effectiveness
+        x_cop_r = max(min(-dnd_rad / dlnd_safe, 3.0), -3.0)
+
+        # Effective force derivatives at CoP (NMP zero cancelled by construction)
+        dna_cop = dna + x_cop_q * dma
+        dyb_cop = dyb + x_cop_r * dlnb
+
+        # ── outer loop: force inversion at CoP ────────────────────────────────
+        # α_cmd = g·ancomx / dna_cop  (NMP zero in δ→aₙ_CG cancelled at CoP)
+        dna_cop_safe = dna_cop if abs(dna_cop) > SMALL else SMALL * _sign(dna_cop if dna_cop != 0 else 1.0)
+        dyb_cop_safe = dyb_cop if abs(dyb_cop) > SMALL else SMALL * _sign(dyb_cop if dyb_cop != 0 else 1.0)
+
+        alpha_cmd = AGRAV * ancomx / dna_cop_safe
+        beta_cmd  = AGRAV * alcomx / dyb_cop_safe
+
+        alp_lim = m.alplimx * RAD
+        alpha_cmd = max(min(alpha_cmd, alp_lim), -alp_lim)
+        beta_cmd  = max(min(beta_cmd,  alp_lim), -alp_lim)
+
+        # ── middle loop: kinematic inversion ───────────────────────────────────
+        # α̇ = q − (g/V)·aₙ_CG  →  kinematic identity is CG-referenced.
+        # an_meas (CG) is the correct feedforward here, not an_cop.
+        V_safe = max(m.dvbec, 30.0)
+
+        q_cmd = k_alpha * (alpha_cmd - alpha) + AGRAV * an_meas / V_safe
+        r_cmd = k_beta  * (beta - beta_cmd)   + AGRAV * al_meas / V_safe
+
+        rate_lim = m.wblimx * RAD
+        q_cmd = max(min(q_cmd, rate_lim), -rate_lim)
+        r_cmd = max(min(r_cmd, rate_lim), -rate_lim)
+
+        q_dot_des = wn_ndi_q * (q_cmd - q)
+        r_dot_des = wn_ndi_r * (r_cmd - r)
+
+        # ── inner loop: NDI moment inversion (identical to standard NDI) ───────
+        q_dot_aero = dma * alpha + dmq * q
+        r_dot_aero = dlnb * beta  + dlnr * r
+
+        dqc = (q_dot_des - q_dot_aero) / dmd_safe
+        drc = (r_dot_des - r_dot_aero) / dlnd_safe
+
+        # ── limit and output ───────────────────────────────────────────────────
+        dqcx = max(min(dqc * DEG, m.dqlimx), -m.dqlimx)
+        drcx = max(min(drc * DEG, m.drlimx), -m.drlimx)
+
+        m.dqcx = dqcx
+        m.drcx = drcx
+
+        # diagnostics
+        self.wn_ndi_q = wn_ndi_q
+        self.wn_ndi_r = wn_ndi_r
+        self.k_alpha  = k_alpha
+        self.k_beta   = k_beta
+        self.x_cop_q  = x_cop_q
+        self.x_cop_r  = x_cop_r
+        self.dna_cop  = dna_cop
+        self.dyb_cop  = dyb_cop
