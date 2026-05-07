@@ -2,19 +2,19 @@
 import math
 import numpy as np
 import config
-from database import SRAAM6_Database
-from environment import Environment
-from kinematics import Kinematics
-from newton import Newton
-from euler import Euler
-from aerodynamics import Aerodynamics
-from actuator import Actuator
-from propulsion import Propulsion
-from forces import Forces
-from control import Control
-from guidance import Guidance
-from ins import INS
-from sensor import Sensor
+from .database import SRAAM6_Database
+from .environment import Environment
+from .kinematics import Kinematics
+from .newton import Newton
+from .euler import Euler
+from .aerodynamics import Aerodynamics
+from .actuator import Actuator
+from .propulsion import Propulsion
+from .forces import Forces
+from .control import Control
+from .guidance import Guidance
+from .ins import INS
+from .sensor import Sensor
 
 class Missile(object):
     def __init__(self):

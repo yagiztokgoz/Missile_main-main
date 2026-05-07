@@ -26,7 +26,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTDIR   = os.path.join(BASE_DIR, 'logs')     # CSV log outputs
 PLOTDIR  = os.path.join(BASE_DIR, 'plots')    # PNG plot outputs
-DATA_DIR = os.path.join(BASE_DIR, 'data')
+DATA_DIR = os.path.join(BASE_DIR, 'missile', 'data')
 
 AERO_DECK = os.path.join(DATA_DIR, 'sraam6_aero_deck.asc')
 PROP_DECK = os.path.join(DATA_DIR, 'sraam6_prop_deck.asc')
@@ -84,7 +84,7 @@ ZETACT  = 0.7      # actuator damping - ND
 #   5: NDI  (Nonlinear Dynamic Inversion)
 #   6: INDI (Incremental NDI)
 #   7: NDI-CoP (NDI reformulated about Center of Percussion — MP output)
-MAUT      = 6
+MAUT      = 5
 
 # Common autopilot limits
 ALIMIT    = 50.0    # total structural acceleration limit - g's

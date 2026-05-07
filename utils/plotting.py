@@ -58,13 +58,14 @@ class SimPlotter:
     """
 
     def __init__(self, log, scenario, name, result,
-                 hit_r=30.0, outdir='plots'):
+                 hit_r=30.0, outdir='plots', alimit=50.0):
         self.log      = log
         self.scenario = scenario
         self.name     = name
         self.result   = result
         self.hit_r    = hit_r
         self.outdir   = outdir
+        self.alimit   = alimit   # structural G limit for reference lines
 
         # Extract columns once.
         self._extract()
@@ -102,6 +103,8 @@ class SimPlotter:
         self.anx     = c('anx');     self.ayx     = c('ayx')
         self.ancomx  = c('ancomx');  self.alcomx  = c('alcomx')
         self.dtbc    = c('dtbc');    self.tgoc    = c('tgoc')
+        # total aerodynamic load factor magnitude
+        self.G_total = np.sqrt(self.anx**2 + self.ayx**2)
 
     @staticmethod
     def _grid(ax):
@@ -116,7 +119,7 @@ class SimPlotter:
         fig_title = (f"SRAAM6  ·  Scenario {s}  —  "
                      f"{name.split('|')[0].strip()}\n{result}")
 
-        fig = plt.figure(f'S{s} Trajectory', figsize=(16, 9))
+        fig = plt.figure(f'S{s} Trajectory', figsize=(22, 9))
         fig.suptitle(fig_title, fontsize=15, fontweight='bold',
                      y=0.96, color='#111111')
 
@@ -133,7 +136,7 @@ class SimPlotter:
         ) * 0.5
 
         # ── 3D ──
-        ax3d = fig.add_subplot(221, projection='3d')
+        ax3d = fig.add_subplot(231, projection='3d')
         ax3d.set_facecolor('white')
         for axis in (ax3d.xaxis, ax3d.yaxis, ax3d.zaxis):
             axis.set_pane_color((0.97, 0.97, 0.97, 1.0))
@@ -164,7 +167,7 @@ class SimPlotter:
         ax3d.view_init(elev=25, azim=-55)
 
         # ── top view ──
-        ax_top = fig.add_subplot(222)
+        ax_top = fig.add_subplot(232)
         ax_top.plot(self.sbel1, self.sbel2, color=BLUE, lw=2.5, label='Missile')
         ax_top.plot(self.sbel1, self.sbel2, color=BLUE, lw=7.0, alpha=0.15)
         ax_top.plot(self.stel1, self.stel2, color=RED,  lw=2.0, ls='--', label='Target')
@@ -178,7 +181,7 @@ class SimPlotter:
         ax_top.set_aspect('equal', adjustable='datalim')
 
         # ── side view ──
-        ax_side = fig.add_subplot(223)
+        ax_side = fig.add_subplot(234)
         ax_side.plot(self.sbel1, self.hbe,      color=BLUE, lw=2.5, label='Missile')
         ax_side.plot(self.sbel1, self.hbe,      color=BLUE, lw=7.0, alpha=0.15)
         ax_side.fill_between(self.sbel1, 0, self.hbe, color=BLUE, alpha=0.05)
@@ -197,7 +200,7 @@ class SimPlotter:
             ax_side.set_ylim(mid_z - 1500.0, mid_z + 1500.0)
 
         # ── range ──
-        ax_rng = fig.add_subplot(224)
+        ax_rng = fig.add_subplot(235)
         ax_rng.plot(self.t, self.dtbc, color=GREEN, lw=2.5, label='Slant Range')
         ax_rng.plot(self.t, self.dtbc, color=GREEN, lw=7.0, alpha=0.15)
         ax_rng.fill_between(self.t, 0, self.dtbc, color=GREEN, alpha=0.05)
@@ -207,6 +210,36 @@ class SimPlotter:
         ax_rng.set_title('Distance to Target', fontsize=12, fontweight='bold', color='#333333')
         ax_rng.legend(loc='best', framealpha=0.9)
         self._grid(ax_rng)
+
+        # ── G-force vs time ──
+        ax_g = fig.add_subplot(233)
+        ax_g.plot(self.t, self.anx,     color=BLUE,   lw=2.0, label='nz  normal')
+        ax_g.plot(self.t, self.anx,     color=BLUE,   lw=6.0, alpha=0.15)
+        ax_g.plot(self.t, self.ayx,     color=GREEN,  lw=1.8, label='ny  lateral')
+        ax_g.plot(self.t, self.ayx,     color=GREEN,  lw=5.0, alpha=0.15)
+        ax_g.plot(self.t, self.G_total, color=ORANGE, lw=2.0, label='|G| total')
+        ax_g.plot(self.t, self.G_total, color=ORANGE, lw=6.0, alpha=0.15)
+        ax_g.axhline( self.alimit, color=RED, ls='--', lw=1.5, alpha=0.7,
+                      label=f'+{self.alimit:.0f} g  struct. limit')
+        ax_g.axhline(-self.alimit, color=RED, ls='--', lw=1.5, alpha=0.7)
+        ax_g.axhline(1.0, color='#888', ls=':', lw=1.0, alpha=0.5)
+        ax_g.axhline(0.0, color='#888', lw=0.8, alpha=0.4)
+        ax_g.set_xlabel('Time [s]'); ax_g.set_ylabel('Load Factor [g]')
+        ax_g.set_title('Missile G-Force', fontsize=12, fontweight='bold', color='#333333')
+        ax_g.legend(fontsize=8, loc='best', framealpha=0.9)
+        self._grid(ax_g)
+
+        # ── G-force vs time (bottom-right duplicate with range for reference) ──
+        ax_g2 = fig.add_subplot(236)
+        ax_g2.plot(self.t, self.G_total, color=ORANGE, lw=2.5, label='|G| total')
+        ax_g2.plot(self.t, self.G_total, color=ORANGE, lw=7.0, alpha=0.15)
+        ax_g2.fill_between(self.t, 0, self.G_total, color=ORANGE, alpha=0.07)
+        ax_g2.axhline(self.alimit, color=RED, ls='--', lw=1.5, alpha=0.7,
+                      label=f'Struct. limit  {self.alimit:.0f} g')
+        ax_g2.set_xlabel('Time [s]'); ax_g2.set_ylabel('G [g]')
+        ax_g2.set_title('Total Load Factor  |G|', fontsize=12, fontweight='bold', color='#333333')
+        ax_g2.legend(fontsize=8, loc='best', framealpha=0.9)
+        self._grid(ax_g2)
 
         fig.tight_layout(rect=[0, 0, 1, 0.95])
         return fig
@@ -253,8 +286,26 @@ class SimPlotter:
                     ['δp cmd', 'δq cmd', 'δr cmd'], 'Fin Commands',       'deg')
         panel(2, 2, [self.dpx, self.dqx, self.drx],
                     ['δp act', 'δq act', 'δr act'], 'Fin Deflections',    'deg')
-        panel(2, 3, [self.anx, self.ayx],
-                    ['aₙ normal', 'aᵧ lateral'],    'Achieved Accel',     'g')
+        # G-force panel: custom (3 lines + structural limit)
+        ax_g = axes[2][3]
+        t = self.t
+        for y, lbl, col in [(self.anx, 'nz normal', BLUE),
+                             (self.ayx, 'ny lateral', GREEN),
+                             (self.G_total, '|G| total', ORANGE)]:
+            ax_g.plot(t, y, color=col, lw=2.0, label=lbl)
+            ax_g.plot(t, y, color=col, lw=6.0, alpha=0.15)
+            ax_g.fill_between(t, 0, y, color=col, alpha=0.04)
+        ax_g.axhline( self.alimit, color=RED, ls='--', lw=1.5, alpha=0.7,
+                      label=f'+{self.alimit:.0f} g  limit')
+        ax_g.axhline(-self.alimit, color=RED, ls='--', lw=1.5, alpha=0.7)
+        ax_g.axhline(1.0, color='#888', ls=':', lw=0.8, alpha=0.5)
+        ax_g.axhline(0.0, color='#888', lw=0.8, alpha=0.4)
+        ax_g.set_title('Load Factors (G-Force)', fontsize=12, fontweight='bold', color='#333333')
+        ax_g.set_xlabel('Time [s]', fontsize=10)
+        ax_g.set_ylabel('g', fontsize=10)
+        ax_g.legend(fontsize=7, loc='best', framealpha=0.9, ncol=2)
+        self._grid(ax_g)
+        ax_g.tick_params(labelsize=9)
 
         panel(3, 0, [self.ancomx, self.alcomx],
                     ['aₙ cmd', 'aₗ cmd'],           'Guidance Commands',  'g')
@@ -362,6 +413,83 @@ class SimPlotter:
         fig.tight_layout(rect=[0, 0, 1, 0.96])
         return fig
 
+    # ── figure 5: G-force analysis ────────────────────────────────────────────
+
+    def _fig_g_analysis(self):
+        s = self.scenario
+        t = self.t
+
+        # target G components (default 0 if not logged)
+        tgt_g   = self._c('tgt_g')
+        tgt_g_n = self._c('tgt_g_n')
+        tgt_g_e = self._c('tgt_g_e')
+        tgt_g_d = self._c('tgt_g_d')
+
+        has_tgt_g = tgt_g.max() > 0.01   # skip empty/zero logs
+
+        fig, axes = plt.subplots(1, 3, figsize=(20, 6),
+                                 num=f'S{s} G-Force Analysis')
+        fig.suptitle(
+            f'SRAAM6  ·  Scenario {s}  —  G-Force Analysis  '
+            f'(Missile vs Target)',
+            fontsize=14, fontweight='bold', y=0.98, color='#111111')
+
+        # ── panel 1: missile G breakdown ─────────────────────────────────────
+        ax1 = axes[0]
+        for y, lbl, col in [(self.anx,     'nz normal',  BLUE),
+                             (self.ayx,     'ny lateral', GREEN),
+                             (self.G_total, '|G| total',  ORANGE)]:
+            ax1.plot(t, y, color=col, lw=2.0, label=lbl)
+            ax1.plot(t, y, color=col, lw=6.0, alpha=0.15)
+        ax1.fill_between(t, 0, self.G_total, color=ORANGE, alpha=0.06)
+        ax1.axhline( self.alimit, color=RED, ls='--', lw=1.5, alpha=0.7,
+                     label=f'+{self.alimit:.0f} g  struct. limit')
+        ax1.axhline(-self.alimit, color=RED, ls='--', lw=1.5, alpha=0.7)
+        ax1.axhline(0, color='#777', lw=0.8, alpha=0.4)
+        ax1.set_title('Missile Load Factors', fontsize=13, fontweight='bold', color='#333333')
+        ax1.set_xlabel('Time [s]', fontsize=11)
+        ax1.set_ylabel('Load Factor [g]', fontsize=11)
+        ax1.legend(fontsize=9, loc='best', framealpha=0.9)
+        self._grid(ax1)
+
+        # ── panel 2: target G breakdown ───────────────────────────────────────
+        ax2 = axes[1]
+        if has_tgt_g:
+            for y, lbl, col in [(tgt_g_n, 'North [g]', BLUE),
+                                 (tgt_g_e, 'East  [g]', GREEN),
+                                 (tgt_g_d, 'Down  [g]', PURPLE),
+                                 (tgt_g,   '|G| total', ORANGE)]:
+                ax2.plot(t, y, color=col, lw=2.0, label=lbl)
+                ax2.plot(t, y, color=col, lw=6.0, alpha=0.15)
+            ax2.fill_between(t, 0, tgt_g, color=ORANGE, alpha=0.06)
+        ax2.axhline(0, color='#777', lw=0.8, alpha=0.4)
+        ax2.set_title('Target Load Factors (commanded)', fontsize=13, fontweight='bold', color='#333333')
+        ax2.set_xlabel('Time [s]', fontsize=11)
+        ax2.set_ylabel('Load Factor [g]', fontsize=11)
+        ax2.legend(fontsize=9, loc='best', framealpha=0.9)
+        self._grid(ax2)
+
+        # ── panel 3: missile vs target |G| comparison ─────────────────────────
+        ax3 = axes[2]
+        ax3.plot(t, self.G_total, color=BLUE,   lw=2.5, label='Missile |G|')
+        ax3.plot(t, self.G_total, color=BLUE,   lw=7.0, alpha=0.15)
+        ax3.fill_between(t, 0, self.G_total, color=BLUE,  alpha=0.06)
+        if has_tgt_g:
+            ax3.plot(t, tgt_g, color=RED,  lw=2.5, label='Target |G|')
+            ax3.plot(t, tgt_g, color=RED,  lw=7.0, alpha=0.15)
+            ax3.fill_between(t, 0, tgt_g, color=RED, alpha=0.06)
+        ax3.axhline(self.alimit, color=RED, ls='--', lw=1.5, alpha=0.7,
+                    label=f'Struct. limit  {self.alimit:.0f} g')
+        ax3.axhline(0, color='#777', lw=0.8, alpha=0.4)
+        ax3.set_title('Missile vs Target  |G| Comparison', fontsize=13, fontweight='bold', color='#333333')
+        ax3.set_xlabel('Time [s]', fontsize=11)
+        ax3.set_ylabel('Total Load Factor [g]', fontsize=11)
+        ax3.legend(fontsize=9, loc='best', framealpha=0.9)
+        self._grid(ax3)
+
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
+        return fig
+
     # ── public API ────────────────────────────────────────────────────────────
 
     def render(self, save=True, show=True):
@@ -371,6 +499,7 @@ class SimPlotter:
         fig2 = self._fig_states()
         fig3 = self._fig_actuator()
         fig4 = self._fig_ins() if self.has_ins else None
+        fig5 = self._fig_g_analysis()
 
         if save:
             os.makedirs(self.outdir, exist_ok=True)
@@ -384,12 +513,14 @@ class SimPlotter:
             if fig4 is not None:
                 fig4.savefig(f'{self.outdir}/s{s}_ins.png',
                              dpi=300, bbox_inches='tight', facecolor='white')
+            fig5.savefig(f'{self.outdir}/s{s}_g_analysis.png',
+                         dpi=300, bbox_inches='tight', facecolor='white')
             print(f"\n[✓] Tüm grafikler '{self.outdir}' klasörüne PNG formatında kaydedildi.")
 
         if show:
             plt.show()
 
-        return fig1, fig2, fig3, fig4
+        return fig1, fig2, fig3, fig4, fig5
 
 
 # ── ComparisonPlotter ────────────────────────────────────────────────────────

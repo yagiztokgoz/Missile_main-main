@@ -85,18 +85,17 @@ TESTS = {
     'accel_vs_indi': {
         'title': 'Accel Controller vs INDI',
         'variants': {
-            'Accel': {'maut': 3, 'mseek': 0, 'mins': 0},
-            'INDI':  {'maut': 6, 'mseek': 0, 'mins': 0},
+            'Accel': {'maut': 3, 'mseek': 1, 'mins': 1},
+            'INDI':  {'maut': 6, 'mseek': 1, 'mins': 1},
         },
     },
 
     'all_autopilots': {
         'title': 'Rate vs Accel vs NDI vs INDI',
-        'variants': {
-            'Rate':  {'maut': 2, 'mseek': 0, 'mins': 0},
-            'Accel': {'maut': 3, 'mseek': 0, 'mins': 0},
-            'NDI':   {'maut': 5, 'mseek': 0, 'mins': 0},
-            'INDI':  {'maut': 6, 'mseek': 0, 'mins': 0},
+        'variants': {   
+            'Accel': {'maut': 3, 'mseek': 1, 'mins': 1},
+            'NDI':   {'maut': 5, 'mseek': 1, 'mins': 1},
+            'INDI':  {'maut': 6, 'mseek': 1, 'mins': 1},
         },
     },
 
@@ -120,7 +119,7 @@ TESTS = {
 
     # ── seeker effect ──────────────────────────────────────────────────────────
 
-    'seeker_on_off': {
+    'seeker_on_off_indi': {
         'title': 'Seeker On vs Off (INDI + ideal INS)',
         'variants': {
             'Seeker off': {'maut': 6, 'mseek': 0, 'mins': 0},

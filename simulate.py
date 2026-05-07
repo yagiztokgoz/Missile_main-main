@@ -60,6 +60,12 @@ OVERVIEW
     $ python3 simulate.py mc all ndi_vs_indi 50     # NDI vs INDI, 50 runs
     → prints scenario × variant CEP table to stdout after all scenarios finish
 
+ 7) UNITY EXPORT — single scenario playback JSON
+    $ python3 simulate.py unity                     # scenario 1
+    $ python3 simulate.py unity 3                   # scenario 3
+    $ python3 simulate.py unity 3 5                 # scenario 3, export every 5th frame
+    → saves JSON to logs/unity/s<N>.json for 3D playback in Unity
+
 ────────────────────────────────────────────────────────────────────────────────
  REGISTERED TESTS  (defined in tests.py, imported as TESTS)
 ────────────────────────────────────────────────────────────────────────────────
@@ -229,6 +235,7 @@ OVERVIEW
     Single-run / comparison
       CSV  → logs/sim_log_<tag>.csv
       PNG  → plots/s<N>_<test>_<fig>.png   (fig ∈ overview | control | ins)
+      JSON → logs/unity/s<N>.json          Unity-ready playback frames
 
     Monte Carlo
       CSV  → logs/mc_runs_s<N>.csv         per-run: variant, run, miss_dist,
@@ -257,7 +264,8 @@ import numpy as np
 import config
 from missile   import Missile
 from target    import Target
-from plotting  import SimPlotter, ComparisonPlotter
+from utils.plotting  import SimPlotter, ComparisonPlotter
+from unity.unity_export import export_unity_json
 
 # ── shorthand handles from config (so tests can import from simulate too) ──────
 OUTDIR = config.OUTDIR
@@ -283,7 +291,7 @@ def _parse_scenario():
     if len(sys.argv) <= 1:
         return 1
     arg = sys.argv[1]
-    if arg in ('all', 'test', 'mc'):
+    if arg in ('all', 'test', 'mc', 'unity'):
         return None
     return int(arg)
 
@@ -378,6 +386,13 @@ def run(scenario=1, cfg=None, verbose=True):
             tr_err_l    = m.alcomx - m.ayx      # lateral tracking error - g
             tr_err_mag  = math.sqrt(tr_err_n**2 + tr_err_l**2)
 
+            # target G-force (NED commanded acceleration / g)
+            tgt_acc  = tgt._accel(m.time)
+            tgt_g_n  = float(tgt_acc[0]) / config.AGRAV
+            tgt_g_e  = float(tgt_acc[1]) / config.AGRAV
+            tgt_g_d  = float(tgt_acc[2]) / config.AGRAV
+            tgt_g    = math.sqrt(tgt_g_n**2 + tgt_g_e**2 + tgt_g_d**2)
+
             # truth body rates (will equal estimate when mins=0)
             wbeb_pdeg = m.WBEB[0] * 57.2957795
             wbeb_qdeg = m.WBEB[1] * 57.2957795
@@ -432,6 +447,9 @@ def run(scenario=1, cfg=None, verbose=True):
                 # seeker
                 'psipbx':  m.psipbx,   'thtpbx':  m.thtpbx,
                 'sigdpy':  m.sigdpy,   'sigdpz':  m.sigdpz,
+                # target G-force (NED commanded acceleration / g)
+                'tgt_g':   tgt_g,
+                'tgt_g_n': tgt_g_n, 'tgt_g_e': tgt_g_e, 'tgt_g_d': tgt_g_d,
             })
 
             if verbose and step % (log_every * 20) == 0:
@@ -497,6 +515,19 @@ def save_csv(log, tag):
         writer.writeheader()
         writer.writerows(log)
     print(f"CSV saved → {path}  ({len(log)} rows)")
+
+
+def save_unity(log, scenario, result, cpa, stride=1, tag=None, position_scale=1.0):
+    """Save a Unity playback JSON under logs/unity/."""
+    return export_unity_json(
+        log,
+        scenario=scenario,
+        result=result,
+        cpa=cpa,
+        tag=tag,
+        stride=stride,
+        position_scale=position_scale,
+    )
 
 
 # ── batch sweep ────────────────────────────────────────────────────────────────
@@ -684,7 +715,7 @@ def monte_carlo(
     Returns:
         dict {label: {'miss_dists', 'results', 'mean', 'std', 'cep', …}}
     """
-    from plotting import MCPlotter
+    from utils.plotting import MCPlotter
 
     if variants   is None: variants   = config.MC_VARIANTS
     if n_runs     is None: n_runs     = config.MC_N_RUNS
@@ -917,6 +948,16 @@ if __name__ == '__main__':
             monte_carlo_all_scenarios(variants=variants, n_runs=n_runs)
         else:
             monte_carlo(scenario=scenario, variants=variants, n_runs=n_runs)
+
+    elif argv and argv[0] == 'unity':
+        rest = argv[1:]
+        ints = [int(t) for t in rest if t.lstrip('-').isdigit()]
+        scenario = ints[0] if ints else 1
+        stride = ints[1] if len(ints) > 1 else 1
+
+        log, result, cpa = run(scenario)
+        if log:
+            save_unity(log, scenario=scenario, result=result, cpa=cpa, stride=stride, tag=f's{scenario}')
 
     else:
         log, result, _ = run(SCENARIO)
