@@ -236,3 +236,32 @@ class Target:
         acc      = self._accel(t)
         self.vel = self.vel + acc * dt
         self.pos = self.pos + self.vel * dt
+
+
+class CustomTarget:
+    """Target with arbitrary initial position, constant velocity, and optional maneuver.
+
+    accel_fn(t, vel) → np.ndarray shape (3,)  acceleration in NED [m/s²]
+    If None: non-maneuvering (constant velocity).
+    """
+
+    def __init__(self, pos, vel, accel_fn=None, name='Custom'):
+        self._p0       = np.array(pos, dtype=float)
+        self._v0       = np.array(vel, dtype=float)
+        self.pos       = self._p0.copy()
+        self.vel       = self._v0.copy()
+        self._accel_fn = accel_fn
+        self.name      = name
+
+    def state(self, _t):
+        return self.pos.copy(), self.vel.copy()
+
+    def step(self, t, dt):
+        acc      = self._accel(t)
+        self.vel = self.vel + acc * dt
+        self.pos = self.pos + self.vel * dt
+
+    def _accel(self, t):
+        if self._accel_fn is None:
+            return np.zeros(3)
+        return np.asarray(self._accel_fn(t, self.vel), dtype=float)

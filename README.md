@@ -24,6 +24,25 @@ Side-by-side overlay of all three autopilots on the same scenario: trajectory ge
 
 Miss-distance histogram + KDE, empirical CDF, and violin plot for 25 runs per variant (NDI vs NDI-CoP). NDI-CoP achieves a CEP of 0.7 m vs NDI's 0.8 m under 15% aerodynamic model uncertainty and IMU noise.
 
+### Weapon Employment Zone (WEZ)
+![WEZ](plots/wez.png)
+
+The WEZ diagram shows the missile's engagement envelope from the shooter's perspective (shooter at bottom, target ahead). It is computed by sweeping target position across the forward hemisphere and running two independent simulation passes:
+
+| Region | Colour | Meaning |
+|--------|--------|---------|
+| **R_MAX** (blue solid line) | — | Maximum effective launch range against a non-maneuvering target. Firing beyond this line results in a miss regardless of target behaviour. |
+| **Outer Launch Zone** | Light blue | Target can be engaged if it does not maneuver, but a 5-g evasive break allows escape. Kill probability is moderate (~30–60%). |
+| **No Escape Zone (NEZ)** | Red | Target cannot escape even with a 5-g break maneuver. Firing from within the NEZ guarantees a high-probability kill (~85–95%). |
+| **R_MIN** (dashed line) | — | Minimum safe launch range — inside this boundary the missile cannot arm or achieve seeker lock in time. |
+
+The NEZ boundary is determined by a second simulation pass in which the target executes a maximum 5-g horizontal break starting at t = 1.5 s. The azimuth range spans ±90° from the shooter's heading, assuming the missile is aimed at the target at launch (off-boresight capability).
+
+**Generated with:**
+```bash
+python3 lar.py wez --speed 200 --dr 2 --da 15 --rmax 25
+```
+
 ---
 
 ## Table of Contents
@@ -46,7 +65,8 @@ Miss-distance histogram + KDE, empirical CDF, and violin plot for 25 runs per va
 7. [Target Scenarios](#target-scenarios)
 8. [Registered Comparison Tests](#registered-comparison-tests)
 9. [Monte Carlo Analysis](#monte-carlo-analysis)
-10. [Unity 3D Export](#unity-3d-export)
+10. [Launch Acceptability Region & WEZ](#launch-acceptability-region--wez)
+11. [Unity 3D Export](#unity-3d-export)
 
 ---
 
@@ -487,6 +507,70 @@ Default configuration (`config.py`):
 Reported statistics per variant: **Mean**, **Std**, **Min**, **Max**, **CEP** (50th percentile), **P90**, **P95**, **Pk<5m**, **Pk<10m**, **Pk<20m**.
 
 > **Runtime note:** each run takes approximately 9 s on a single core (Python 1 kHz integrator). A full sweep of 200 runs × 3 variants ≈ 90 minutes. Use `n_runs=50` for quick sanity checks.
+
+---
+
+## Launch Acceptability Region & WEZ
+
+The `lar.py` module computes and visualises the missile's engagement envelope by running large batches of simulations in parallel across a swept target-position grid.
+
+### Launch Acceptability Region (LAR)
+
+The LAR answers: *"From which positions can the missile successfully intercept the target?"* It sweeps all 360° of azimuth and a configurable range interval, classifying each grid point as in-LAR (miss ≤ threshold) or out-of-LAR.
+
+```bash
+# 360° polar LAR, head-on target, coarse grid (~60 runs, ~2 min)
+python3 lar.py --aspect 180 --speed 200 --dr 4 --da 30
+
+# Medium resolution
+python3 lar.py --aspect 180 --speed 200 --dr 2 --da 15
+
+# INDI autopilot, fine grid
+python3 lar.py --maut 6 --dr 1 --da 10 --rmax 25
+```
+
+Output: `plots/lar_asp<aspect>_v<speed>.png` — left panel: binary hit/miss; right panel: miss-distance heatmap with LAR boundary contour.
+
+### Weapon Employment Zone (WEZ)
+
+The WEZ extends the LAR with a second simulation pass using a maneuvering target (configurable g-load break), producing the classic fighter pilot's engagement envelope display:
+
+```bash
+# Forward hemisphere WEZ, 5-g NEZ
+python3 lar.py wez --speed 200 --dr 2 --da 15 --rmax 25
+```
+
+Output: `plots/wez.png`
+
+### Programmatic Usage
+
+```python
+from lar import compute_lar, plot_lar, compute_wez, plot_wez
+import numpy as np
+
+# LAR
+data = compute_lar(
+    ranges_km        = np.arange(2, 26, 2),
+    azimuths_deg     = np.arange(0, 360, 15),
+    tgt_speed_ms     = 200,
+    tgt_aspect_deg   = 180,
+    miss_threshold_m = 20,
+    cfg = {'maut': 6, 'mins': 0, 'mseek': 0},
+)
+plot_lar(data)
+
+# WEZ
+wez = compute_wez(
+    azimuths_deg     = np.arange(-90, 91, 10),
+    tgt_speed_ms     = 200,
+    miss_threshold_m = 20,
+    nez_g            = 5.0,
+    cfg = {'maut': 5, 'mins': 0},
+)
+plot_wez(wez)
+```
+
+> **Performance note:** Each simulation run takes ~3–8 s (Python 1 kHz integrator). A 288-run LAR sweep with 11 parallel workers completes in approximately 3–5 minutes. Use `--dr 4 --da 30` for a quick 60-run estimate.
 
 ---
 

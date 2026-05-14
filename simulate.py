@@ -291,9 +291,12 @@ def _parse_scenario():
     if len(sys.argv) <= 1:
         return 1
     arg = sys.argv[1]
-    if arg in ('all', 'test', 'mc', 'unity'):
+    if arg in ('all', 'test', 'mc', 'unity', 'lar'):
         return None
-    return int(arg)
+    try:
+        return int(arg)
+    except ValueError:
+        return 1  # called as a library (e.g. from lar.py) — default to scenario 1
 
 
 SCENARIO = _parse_scenario()
@@ -301,13 +304,14 @@ SCENARIO = _parse_scenario()
 
 # ── simulation loop ────────────────────────────────────────────────────────────
 
-def run(scenario=1, cfg=None, verbose=True):
+def run(scenario=1, cfg=None, verbose=True, tgt_override=None):
     """Run one scenario. `cfg` optionally overrides any global knob:
         mins, ins_seed, mseek, racq, dtimac, dblind, maut, mguid, gnav, hit_r.
-    Returns (log, result).
+    Pass `tgt_override` to use a CustomTarget instead of a named scenario.
+    Returns (log, result, cpa).
     """
     cfg = cfg or {}
-    name = Target.NAMES[scenario]
+    name = getattr(tgt_override, 'name', None) or Target.NAMES[scenario]
 
     # resolve config (override > module globals)
     mins_      = cfg.get('mins',      MINS)
@@ -321,6 +325,8 @@ def run(scenario=1, cfg=None, verbose=True):
     gnav_      = cfg.get('gnav',      4.0)
     hit_r_     = cfg.get('hit_r',     HIT_R)
     aero_pert_ = cfg.get('aero_pert', {})
+    t_end_     = cfg.get('t_end',     T_END)   # per-run time limit override
+    skip_log_  = cfg.get('skip_log',  False)   # skip log building (LAR/WEZ use)
 
     if verbose:
         print(f"\n{'='*70}")
@@ -328,7 +334,7 @@ def run(scenario=1, cfg=None, verbose=True):
         print(f"  cfg: maut={maut_}  mins={mins_}  mseek={mseek_}  mguid={mguid_}")
         print(f"{'='*70}")
 
-    tgt = Target(scenario)
+    tgt = tgt_override if tgt_override is not None else Target(scenario)
     m   = Missile()
 
     m.ins_seed  = ins_seed_
@@ -343,6 +349,12 @@ def run(scenario=1, cfg=None, verbose=True):
     m.dblind    = dblind_
     m.aero_pert = aero_pert_
 
+    # Optional: override initial heading so missile points toward the target at launch
+    psi_init_ = cfg.get('psi_init_deg', None)
+    if psi_init_ is not None:
+        m.psix = float(psi_init_)
+        m.kinematics._init_from_euler()  # rebuild quaternion + TBL from new psi
+
     log_every = max(1, round(LOG_DT / DT))
     log      = []
     step     = 0
@@ -356,7 +368,7 @@ def run(scenario=1, cfg=None, verbose=True):
               f"{'alpha':>7}  {'ancomx':>8}  {'dtbc':>8}  {'tgoc':>6}")
         print("-" * 70)
 
-    while m.time < T_END:
+    while m.time < t_end_:
 
         tpos, tvel = tgt.state(m.time)
         m.STEL = tpos
@@ -376,7 +388,7 @@ def run(scenario=1, cfg=None, verbose=True):
         m.euler.euler(DT)
         m.newton.newton(DT)
 
-        if step % log_every == 0:
+        if not skip_log_ and step % log_every == 0:
             dtbc = float(np.linalg.norm(m.STEL - m.SBEL))
 
             # derived metrics
@@ -493,7 +505,7 @@ def run(scenario=1, cfg=None, verbose=True):
         step   += 1
 
     if result == "TIMEOUT":
-        result = (f"TIMEOUT  t={T_END:.1f}s  min_dist={min_dtbc:.2f}m  "
+        result = (f"TIMEOUT  t={t_end_:.1f}s  min_dist={min_dtbc:.2f}m  "
                   f"(@t={min_t:.3f}s)")
         if verbose:
             print(f"\n{result}")
